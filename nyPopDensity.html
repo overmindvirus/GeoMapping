@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+svg {
+  font: 10px sans-serif;
+}
+
+.caption {
+  font-weight: bold;
+}
+
+.key path {
+  display: none;
+}
+
+.key line {
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.county-border {
+  fill: none;
+  stroke: #000;
+  stroke-opacity: 0.3;
+}
+.tract-border{
+    stroke-opacity: 0.3;
+}
+.ttract{
+    fill: none;
+    stroke: #000;
+}
+.tract-border-gone{
+    fill: none;
+    stroke: #000;
+    stroke-opacity: 0;
+}
+</style>
+<body>
+<script src="//d3js.org/d3.v3.min.js"></script>
+<script src="//d3js.org/topojson.v1.min.js"></script>
+<script>
+
+var width = 960,
+    height = 700; //this is the width and height of the display.
+
+var formatNumber = d3.format(",d");
+
+var path = d3.geo.path()
+    .projection(null);
+
+var color = d3.scale.threshold()
+    .domain([1, 10, 50, 100, 500, 1000, 2000, 5000])
+    .range(["#fff7ec", "#fee8c8", "#fdd49e", "#fdbb84", "#fc8d59", "#ef6548", "#d7301f", "#b30000", "#7f0000"]); // this is the bar.
+
+// A position encoding for the key only.
+var x = d3.scale.linear()
+    .domain([0, 5100])
+    .range([0, 480]);
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .tickSize(13)
+    .tickValues(color.domain())
+    .tickFormat(function(d) { return d >= 100 ? formatNumber(d) : null; });
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+var g = svg.append("g")
+    .attr("class", "key")
+    .attr("transform", "translate(5,650)");
+
+g.selectAll("rect")
+    .data(color.range().map(function(d, i) {
+      return {
+        x0: i ? x(color.domain()[i - 1]) : x.range()[0],
+        x1: i < color.domain().length ? x(color.domain()[i]) : x.range()[1],
+        z: d
+      };
+    }))
+  .enter().append("rect")
+    .attr("height", 8)
+    .attr("x", function(d) { return d.x0; })
+    .attr("width", function(d) { return d.x1 - d.x0; })
+    .style("fill", function(d) { return d.z; });
+
+g.call(xAxis).append("text")
+    .attr("class", "caption")
+    .attr("y", -6)
+    .text("Population per square mile");
+
+d3.json("ny.json", function(error, ny) {
+  if (error) throw error;
+
+  var tracts = topojson.feature(ny, ny.objects.NYTRACT);
+
+  // Clip tracts to land.
+  svg.append("defs").append("clipPath")
+      .attr("id", "clip-land")
+    .append("path")
+      .datum(topojson.feature(ny, ny.objects.NYCOUNTY))
+      .attr("d", path);
+
+  // Group tracts by color for faster rendering.
+  svg.append("g")
+      .attr("class", "tract")
+      .attr("clip-path", "url(#clip-land)")
+      .selectAll("path")
+      .data(d3.nest()
+        .key(function(d) { return (d.properties.population / d.properties.area * 2.58999e6); })
+        .entries(tracts.features.filter(function(d) { return d.properties.area; })))
+    .enter().append("path")
+      .call(changeColor)
+      .attr("d", function(d) { return path({type: "FeatureCollection", features: d.values}); });
+
+//   Draw county borders.
+  svg.append("path")
+      .datum(topojson.mesh(ny, ny.objects.NYTRACT, function(a, b) { return a !== b; }))
+      .attr("class", "ttract")
+      .call(TrackBoundary)
+      .attr("d", path);
+  
+  svg.append("path")
+      .datum(topojson.mesh(ny, ny.objects.NYCOUNTY, function(a, b) { return a !== b; }))
+      .attr("class", "county-border")
+      .attr("d", path);
+    
+});
+
+d3.select(self.frameElement).style("height", height + "px")
+    
+var change_color = true;
+var state = true;
+var track = true;
+
+function changeColor(){
+    if(change_color ==  false){
+        change_color = true;
+        color.range(["#5554C5", "#4240CB", "#0907FC", "#030192", "#010072", "#010060", "#010059", "#010040", "#010035"]);
+    }else{
+        change_color = false;
+        color.range(["#fff7ec", "#fee8c8", "#fdd49e", "#fdbb84", "#fc8d59", "#ef6548", "#d7301f", "#b30000", "#7f0000"]);
+    }
+    svg.selectAll("path").style("fill", function(d) { return color(d.key)});
+    svg.selectAll("rect").data(color.range().map(function(d, i) {
+      return { 
+          z: d
+      };
+    })).style("fill", function(d) { return d.z; });
+}
+function StateBoundary(){
+    if(state == false){
+        state = true;
+    }else{
+        state = false;
+    }
+}
+function TrackBoundary(){
+    //console.log(track);
+    if(track == false){
+        track = true;
+        svg.selectAll(".ttract").classed("tract-border", true);
+    }else{
+        track = false;
+        svg.selectAll(".ttract").classed("tract-border", false);
+    }
+}
+
+</script>
+<button onclick="changeColor()">Change Color</button>
+<button onClick="StateBoundary()">Change State Boundary</button>
+<button onClick="TrackBoundary()">Change Track Boundary</button>
